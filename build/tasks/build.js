@@ -17,11 +17,13 @@ module.exports = function( grunt ) {
 		read = function( fileName ) {
 			return grunt.file.read( srcFolder + fileName );
 		},
-		globals = read( "exports/global.js" ),
 		wrapper = read( "wrapper.js" ).split( /\/\/ \@CODE\n\/\/[^\n]+/ ),
 		config = {
 			baseUrl: "src",
 			name: "jquery",
+
+			// Allow strict mode
+			useStrict: true,
 
 			// We have multiple minify steps
 			optimize: "none",
@@ -35,8 +37,8 @@ module.exports = function( grunt ) {
 			// Avoid breaking semicolons inserted by r.js
 			skipSemiColonInsertion: true,
 			wrap: {
-				start: wrapper[ 0 ].replace( /\/\*jshint .* \*\/\n/, "" ),
-				end: globals + wrapper[ 1 ]
+				start: wrapper[ 0 ].replace( /\/\*\s*eslint(?: |-).*\s*\*\/\n/, "" ),
+				end: wrapper[ 1 ]
 			},
 			rawText: {},
 			onBuildWrite: convert
@@ -58,7 +60,12 @@ module.exports = function( grunt ) {
 		// Convert var modules
 		if ( /.\/var\//.test( path.replace( process.cwd(), "" ) ) ) {
 			contents = contents
-				.replace( /define\([\w\W]*?return/, "var " + ( /var\/([\w-]+)/.exec( name )[ 1 ] ) + " =" )
+				.replace(
+					/define\([\w\W]*?return/,
+					"var " +
+					( /var\/([\w-]+)/.exec( name )[ 1 ] ) +
+					" ="
+				)
 				.replace( rdefineEnd, "" );
 
 		// Sizzle treatment
@@ -78,7 +85,7 @@ module.exports = function( grunt ) {
 
 			// Remove define wrappers, closure ends, and empty declarations
 			contents = contents
-				.replace( /define\([^{]*?{/, "" )
+				.replace( /define\([^{]*?{\s*(?:("|')use strict\1(?:;|))?/, "" )
 				.replace( rdefineEnd, "" );
 
 			// Remove anything wrapped with
@@ -124,6 +131,7 @@ module.exports = function( grunt ) {
 			excluded = [],
 			included = [],
 			version = grunt.config( "pkg.version" ),
+
 			/**
 			 * Recursively calls the excluder to remove on all modules in the list
 			 * @param {Array} list
@@ -161,6 +169,7 @@ module.exports = function( grunt ) {
 					} );
 				}
 			},
+
 			/**
 			 * Adds the specified module to the excluded or included list, depending on the flag
 			 * @param {String} flag A module path relative to

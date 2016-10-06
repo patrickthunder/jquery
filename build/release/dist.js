@@ -12,7 +12,6 @@ module.exports = function( Release, files, complete ) {
 		// These files are included with the distribution
 		extras = [
 			"src",
-			"external/sizzle",
 			"LICENSE.txt",
 			"AUTHORS.txt",
 			"package.json"
@@ -56,11 +55,32 @@ module.exports = function( Release, files, complete ) {
 	function copy() {
 
 		// Copy dist files
-		var distFolder = Release.dir.dist + "/dist";
+		var distFolder = Release.dir.dist + "/dist",
+			externalFolder = Release.dir.dist + "/external",
+			rmIgnore = files
+				.concat( [
+					"README.md",
+					"node_modules"
+				] )
+				.map( function( file ) {
+					return Release.dir.dist + "/" + file;
+				} );
+
+		shell.config.globOptions = {
+			ignore: rmIgnore
+		};
+
+		// Remove extraneous files before copy
+		shell.rm( "-rf", Release.dir.dist + "/**/*" );
+
 		shell.mkdir( "-p", distFolder );
 		files.forEach( function( file ) {
 			shell.cp( "-f", Release.dir.repo + "/" + file, distFolder );
 		} );
+
+		// Copy Sizzle
+		shell.mkdir( "-p", externalFolder );
+		shell.cp( "-rf", Release.dir.repo + "/external/sizzle", externalFolder );
 
 		// Copy other files
 		extras.forEach( function( file ) {
@@ -74,9 +94,10 @@ module.exports = function( Release, files, complete ) {
 		fs.writeFileSync( Release.dir.dist + "/bower.json", generateBower() );
 
 		console.log( "Adding files to dist..." );
-		Release.exec( "git add .", "Error adding files." );
+
+		Release.exec( "git add -A", "Error adding files." );
 		Release.exec(
-			"git commit -m 'Release " + Release.newVersion + "'",
+			"git commit -m \"Release " + Release.newVersion + "\"",
 			"Error committing files."
 		);
 		console.log();
@@ -84,7 +105,7 @@ module.exports = function( Release, files, complete ) {
 		console.log( "Tagging release on dist..." );
 		Release.exec( "git tag " + Release.newVersion,
 			"Error tagging " + Release.newVersion + " on dist repo." );
-		Release.tagTime = Release.exec( "git log -1 --format='%ad'",
+		Release.tagTime = Release.exec( "git log -1 --format=\"%ad\"",
 			"Error getting tag timestamp." ).trim();
 	}
 

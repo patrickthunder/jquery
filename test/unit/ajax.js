@@ -99,7 +99,7 @@ QUnit.module( "ajax", {
 				assert.ok( true, "success" );
 			},
 			fail: function() {
-				if (jQuery.support.cors === false) {
+				if ( jQuery.support.cors === false ) {
 					assert.ok( true, "fail" );
 				}
 			},
@@ -366,6 +366,64 @@ QUnit.module( "ajax", {
 					// Remove the random number, but ensure the cache-buster param is there
 					var url = settings.url.replace( /\d+/, "" );
 					assert.equal( url, "data/name.html?abc&devo=hat&_=#brownies", "Make sure that the URL has its hash." );
+					return false;
+				},
+				error: true
+			}
+		];
+	} );
+
+	ajaxTest( "jQuery.ajax() - traditional param encoding", 4, function( assert ) {
+		return [
+			{
+				url: "/",
+				traditional: true,
+				data: {
+					"devo": "hat",
+					"answer": 42,
+					"quux": "a space"
+				},
+				beforeSend: function( xhr, settings ) {
+					assert.equal( settings.url, "/?devo=hat&answer=42&quux=a%20space", "Simple case" );
+					return false;
+				},
+				error: true
+			},
+			{
+				url: "/",
+				traditional: true,
+				data: {
+					"a": [ 1, 2, 3 ],
+					"b[]": [ "b1", "b2" ]
+				},
+				beforeSend: function( xhr, settings ) {
+					assert.equal( settings.url, "/?a=1&a=2&a=3&b%5B%5D=b1&b%5B%5D=b2", "Arrays" );
+					return false;
+				},
+				error: true
+			},
+			{
+				url: "/",
+				traditional: true,
+				data: {
+					"a": [ [ 1, 2 ], [ 3, 4 ], 5 ]
+				},
+				beforeSend: function( xhr, settings ) {
+					assert.equal( settings.url, "/?a=1%2C2&a=3%2C4&a=5", "Nested arrays" );
+					return false;
+				},
+				error: true
+			},
+			{
+				url: "/",
+				traditional: true,
+				data: {
+					"a": [ "w", [ [ "x", "y" ], "z" ] ]
+				},
+				cache: false,
+				beforeSend: function( xhr, settings ) {
+					var url = settings.url.replace( /\d{3,}/, "" );
+					assert.equal( url, "/?a=w&a=x%2Cy%2Cz&_=", "Cache-buster" );
 					return false;
 				},
 				error: true
@@ -770,8 +828,9 @@ QUnit.module( "ajax", {
 		} ), "generic" );
 	} );
 
-	ajaxTest( "jQuery.ajax() - cache", 12, function( assert ) {
-		var re = /_=(.*?)(&|$)/g;
+	ajaxTest( "jQuery.ajax() - cache", 28, function( assert ) {
+		var re = /_=(.*?)(&|$)/g,
+			rootUrl = "data/text.php";
 
 		function request( url, title ) {
 			return {
@@ -779,6 +838,11 @@ QUnit.module( "ajax", {
 				cache: false,
 				beforeSend: function() {
 					var parameter, tmp;
+
+					// URL sanity check
+					assert.equal( this.url.indexOf( rootUrl ), 0, "root url not mangled: " + this.url );
+					assert.equal( /\&.*\?/.test( this.url ), false, "parameter delimiters in order" );
+
 					while ( ( tmp = re.exec( this.url ) ) ) {
 						assert.strictEqual( parameter, undefined, title + ": only one 'no-cache' parameter" );
 						parameter = tmp[ 1 ];
@@ -792,27 +856,31 @@ QUnit.module( "ajax", {
 
 		return [
 			request(
-				"data/text.php",
-				"no parameter"
+				rootUrl,
+				"no query"
 			),
 			request(
-				"data/text.php?pizza=true",
+				rootUrl + "?",
+				"empty query"
+			),
+			request(
+				rootUrl + "?pizza=true",
 				"1 parameter"
 			),
 			request(
-				"data/text.php?_=tobereplaced555",
+				rootUrl + "?_=tobereplaced555",
 				"_= parameter"
 			),
 			request(
-				"data/text.php?pizza=true&_=tobereplaced555",
+				rootUrl + "?pizza=true&_=tobereplaced555",
 				"1 parameter and _="
 			),
 			request(
-				"data/text.php?_=tobereplaced555&tv=false",
+				rootUrl + "?_=tobereplaced555&tv=false",
 				"_= and 1 parameter"
 			),
 			request(
-				"data/text.php?name=David&_=tobereplaced555&washere=true",
+				rootUrl + "?name=David&_=tobereplaced555&washere=true",
 				"2 parameters surrounding _="
 			)
 		];
@@ -1679,11 +1747,11 @@ if ( typeof window.ArrayBuffer === "undefined" || typeof new XMLHttpRequest().re
 } else {
 
 	// No built-in support for binary data, but it's easy to add via a prefilter
-	jQuery.ajaxPrefilter( "arraybuffer", function ( s ) {
+	jQuery.ajaxPrefilter( "arraybuffer", function( s ) {
 		s.xhrFields = { responseType: "arraybuffer" };
 		s.responseFields.arraybuffer = "response";
 		s.converters[ "binary arraybuffer" ] = true;
-	});
+	} );
 
 	ajaxTest( "gh-2498 - jQuery.ajax() - binary data shouldn't throw an exception", 2, function( assert ) {
 		return {
@@ -1903,7 +1971,7 @@ if ( typeof window.ArrayBuffer === "undefined" || typeof new XMLHttpRequest().re
 			url: url( "data/ajax/content-type.php" ),
 			data: {
 				"content-type": "test/jsontest",
-				"response": JSON.stringify({test: "test"})
+				"response": JSON.stringify( { test: "test" } )
 			},
 			success: function( result ) {
 				assert.strictEqual(
@@ -2256,6 +2324,17 @@ if ( typeof window.ArrayBuffer === "undefined" || typeof new XMLHttpRequest().re
 		jQuery( "#first" ).load( "data/test3.html   #superuser ", function() {
 			assert.strictEqual( jQuery( this ).children( "div" ).length, 1, "Verify that specific elements were injected" );
 			QUnit.start();
+		} );
+	} );
+
+	// Selector should be trimmed to avoid leading spaces (#14773)
+	// Selector should include any valid non-HTML whitespace (#3003)
+	QUnit.test( "jQuery.fn.load( URL_SELECTOR with non-HTML whitespace(#3003) )", function( assert ) {
+		assert.expect( 1 );
+		var done = assert.async();
+		jQuery( "#first" ).load( "data/test3.html   #whitespace\\\\xA0 ", function() {
+			assert.strictEqual( jQuery( this ).children( "div" ).length, 1, "Verify that specific elements were injected" );
+			done();
 		} );
 	} );
 
